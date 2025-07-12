@@ -4,6 +4,7 @@ from bson import ObjectId
 from datetime import datetime
 from passlib.context import CryptContext
 
+# Initialize bcrypt context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class PyObjectId(ObjectId):
@@ -38,10 +39,22 @@ class UserInDB(UserBase):
     def verify_password(self, plain_password: str) -> bool:
         return pwd_context.verify(plain_password, self.hashed_password)
 
+    class Config:
+        json_encoders = {
+            ObjectId: str,
+            datetime: lambda dt: dt.isoformat()
+        }
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+
 class UserResponse(UserBase):
     id: str
     created_at: datetime
 
     class Config:
-        json_encoders = {ObjectId: str}
+        json_encoders = {
+            ObjectId: str,
+            datetime: lambda dt: dt.isoformat()
+        }
         allow_population_by_field_name = True
+        arbitrary_types_allowed = True

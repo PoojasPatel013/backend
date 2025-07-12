@@ -47,10 +47,11 @@ app = FastAPI(title="Puf", lifespan=lifespan)
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins.split(','),  # Allow from frontend
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Authorization", "Content-Type"]
 )
 
 # JWT Settings
@@ -88,17 +89,21 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 
-async def authenticate_user(username: str, password: str):
+async def authenticate_user(username: str, password: str) -> Optional[UserInDB]:
+    print(f"Authenticating user: {username}")  # Debug log
     users_collection = await Database.get_users_collection()
     user_data = await users_collection.find_one({"username": username})
-    
-    if not user_data:
-        return False
+    if user_data is None:
+        print(f"User not found: {username}")  # Debug log
+        return None
     
     user = UserInDB(**user_data)
+    print(f"Verifying password for user {username}")  # Debug log
     if not user.verify_password(password):
-        return False
+        print(f"Password verification failed for user {username}")  # Debug log
+        return None
     
+    print(f"Authentication successful for user {username}")  # Debug log
     return user
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -177,18 +182,31 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             data={"sub": user.username}, expires_delta=access_token_expires
         )
         
-        return {
-            "access_token": access_token, 
-            "token_type": "bearer",
-            "user": user.dict()
-        }
-    except HTTPException as e:
-        raise e
+        # Convert user data to dict and handle ObjectId and datetime
+        user_data = user.dict(by_alias=True)
+        user_data["id"] = str(user_data["_id"])  # Convert ObjectId to string
+        del user_data["_id"]  # Remove the original _id field
+        del user_data["hashed_password"]  # Don't send hashed password back
+        
+        # Convert datetime to string
+        user_data["created_at"] = user_data["created_at"].isoformat()
+        
+        return JSONResponse(
+            content={
+                "access_token": access_token, 
+                "token_type": "bearer",
+                "user": user_data
+            },
+            headers={
+                "Access-Control-Allow-Origin": "http://localhost:3000",
+                "Access-Control-Allow-Credentials": "true"
+            }
+        )
     except Exception as e:
-        print(f"Login error: {e}")
+        print(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail=str(e)
         )
 
 @app.get("/api/me")
