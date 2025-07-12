@@ -161,7 +161,7 @@ async def register_user(user: UserCreate):
             detail=f"Registration failed: {str(e)}"
         )
 
-@app.post("/token", response_model=Token)
+@app.post("/api/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     try:
         user = await authenticate_user(form_data.username, form_data.password)
@@ -177,24 +177,13 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             data={"sub": user.username}, expires_delta=access_token_expires
         )
         
-        # Convert user to dictionary manually
-        user_dict = {
-            "id": str(user.id),
-            "username": user.username,
-            "email": user.email,
-            "name": user.name,
-            "avatar_url": user.avatar_url,
-            "created_at": user.created_at.isoformat()
-        }
-        
         return {
             "access_token": access_token, 
             "token_type": "bearer",
-            "user": user_dict
+            "user": user.dict()
         }
-    
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        raise e
     except Exception as e:
         print(f"Login error: {e}")
         raise HTTPException(
@@ -202,15 +191,16 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             detail="Internal server error"
         )
 
-@app.get("/me")
+@app.get("/api/me")
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    return current_user.to_dict()
+    return current_user.dict()
 
-@app.post("/models/upload")
+@app.post("/api/models/upload")
 async def upload_model(
     model_file: UploadFile = File(...),
     version: Optional[str] = None,
-    description: Optional[str] = None
+    description: Optional[str] = None,
+    current_user: UserInDB = Depends(get_current_user)
 ):
     """Upload a new model version"""
     try:
@@ -237,7 +227,8 @@ async def upload_model(
             "description": description,
             "file_path": file_path,
             "created_at": datetime.now(),
-            "dvc_path": f"{version}/{model_file.filename}"
+            "dvc_path": f"{version}/{model_file.filename}",
+            "owner": current_user.username
         }
         await models_collection.insert_one(model_data)
 
@@ -248,38 +239,50 @@ async def upload_model(
         })
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Upload error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload model"
+        )
 
-@app.get("/models/versions")
-async def list_versions():
-    """List all available model versions"""
+@app.get("/api/models")
+async def list_versions(current_user: UserInDB = Depends(get_current_user)):
     try:
         models_collection = await Database.get_models_collection()
-        cursor = models_collection.find().sort("created_at", -1)
-        versions = []
-        async for model in cursor:
-            model["_id"] = str(model["_id"])
-            model["created_at"] = model["created_at"].isoformat()
-            versions.append(model)
-        return versions
+        models = await models_collection.find({"owner": current_user.username}).sort(
+            "created_at", -1
+        ).to_list(length=100)
+        return models
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"List versions error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list models"
+        )
 
-@app.get("/models/{version}")
-async def get_model_info(version: str):
-    """Get information about a specific model version"""
+@app.get("/api/models/{version}")
+async def get_model_info(
+    version: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
     try:
         models_collection = await Database.get_models_collection()
-        model = await models_collection.find_one({"version": version})
-        
+        model = await models_collection.find_one({
+            "version": version,
+            "owner": current_user.username
+        })
         if not model:
-            raise HTTPException(status_code=404, detail="Version not found")
-        
-        model["_id"] = str(model["_id"])
-        model["created_at"] = model["created_at"].isoformat()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Model not found"
+            )
         return model
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Get model error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get model info"
+        )
 
 if __name__ == "__main__":
     import uvicorn
