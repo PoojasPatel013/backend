@@ -211,7 +211,27 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @app.get("/api/me")
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    return current_user.dict()
+    try:
+        # Convert user data to dict and handle ObjectId
+        user_data = current_user.dict(by_alias=True)
+        user_data["id"] = str(user_data["_id"])  # Convert ObjectId to string
+        del user_data["_id"]  # Remove the original _id field
+        del user_data["hashed_password"]  # Don't send hashed password back
+        user_data["created_at"] = user_data["created_at"].isoformat()  # Convert datetime to string
+        
+        return JSONResponse(
+            content=user_data,
+            headers={
+                "Access-Control-Allow-Origin": "http://localhost:3000",
+                "Access-Control-Allow-Credentials": "true"
+            }
+        )
+    except Exception as e:
+        print(f"Error getting user info: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 @app.post("/api/models/upload")
 async def upload_model(

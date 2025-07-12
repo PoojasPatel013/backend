@@ -3,7 +3,7 @@ from app.core.config import settings
 from typing import Optional
 
 class Database:
-    client: Optional[AsyncIOMotorClient] = None
+    client = None
     db = None
 
     @classmethod
@@ -26,10 +26,14 @@ class Database:
     @classmethod
     async def close_db(cls):
         if cls.client:
-            await cls.client.close()
-            print("Closed MongoDB connection")
-            cls.client = None
-            cls.db = None
+            try:
+                await cls.client.close()
+                print("Closed MongoDB connection")
+            except Exception as e:
+                print(f"Error closing MongoDB connection: {str(e)}")
+            finally:
+                cls.client = None
+                cls.db = None
 
     @classmethod
     async def get_models_collection(cls):

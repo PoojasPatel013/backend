@@ -5,8 +5,9 @@ from datetime import datetime
 from passlib.context import CryptContext
 
 # Initialize bcrypt context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], default="bcrypt", deprecated="auto")
 
+# User models
 class PyObjectId(ObjectId):
     @classmethod
     def __get_validators__(cls):
