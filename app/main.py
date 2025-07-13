@@ -298,17 +298,14 @@ async def list_versions(current_user: UserInDB = Depends(get_current_user)):
             detail="Failed to list models"
         )
 
-@app.get("/api/models/{version}")
-async def get_model_info(
-    version: str,
+@app.get("/api/models/{model_id}")
+async def get_model(
+    model_id: str,
     current_user: UserInDB = Depends(get_current_user)
 ):
     try:
         models_collection = await Database.get_models_collection()
-        model = await models_collection.find_one({
-            "version": version,
-            "owner": current_user.username
-        })
+        model = await models_collection.find_one({"_id": ObjectId(model_id)})
         if not model:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
